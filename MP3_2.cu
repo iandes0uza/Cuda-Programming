@@ -59,7 +59,7 @@ int main()
 			}
 		}
 		
-		//Print Time (Host -> Device)
+		//Print Time (Host -> Device) - USED FOR ANALYSIS
 		cudaEventRecord(start);
 		cudaMemcpy(devA, matrixA, size, cudaMemcpyHostToDevice);
 		cudaMemcpy(devB, matrixB, size, cudaMemcpyHostToDevice);
@@ -78,7 +78,7 @@ int main()
 		printf("Elapsed GPU Computation:\t\t\t%0.2f \n", time);
 		printf("------------------------------------------------------------------------------\n");
 
-		//Print Time (Device -> Host)
+		//Print Time (Device -> Host) - USED FOR ANALYSIS
 		cudaEventRecord(start);
 		cudaMemcpy(gpuResult, devResult, size, cudaMemcpyDeviceToHost);
 		cudaEventRecord(stop);
