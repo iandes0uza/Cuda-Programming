@@ -45,21 +45,32 @@ void devGetInfo(cudaDeviceProp dev, int num)
 
 	//Printing Device Properties
 	printf("Device Name:\t\t\t\t\t%s\n", dev.name);
+	printLine();
 	printf("Clock Rate:\t\t\t\t\t%d\n", dev.clockRate);
+	printLine();
 	printf("# of SM's:\t\t\t\t\t%d\n", dev.multiProcessorCount);
+	printLine();
 
 	//Fetch and Print Core Count
 	int cores = devGetCores(dev);
 	if (cores < 0) printf("# of Cores:\t\t\t\t\t%d\n", cores);
 	else printf("# of Cores:\t\t\t\t\t%d\n", cores);
+	printLine();
 
 	printf("Warp Size:\t\t\t\t\t%d\n", dev.warpSize);
+	printLine();
 	printf("Amount of Global Memory:\t\t\t%d\n", dev.totalGlobalMem);
+	printLine();
 	printf("Amount of Constant Memory:\t\t\t%d\n", dev.totalConstMem);
+	printLine();
 	printf("Amount of Shared Memory (per block):\t\t%d\n", dev.sharedMemPerBlock);
+	printLine();
 	printf("# of Registers Available (per block):\t\t%d\n", dev.regsPerBlock);
+	printLine();
 	printf("Max # of Threads (per block):\t\t\t%d\n", dev.maxThreadsPerBlock);
+	printLine();
 	printf("Max Dimension Sizes for Block:\t\t\tx: %d, y: %d, z: %d\n", dev.maxThreadsDim[0], dev.maxThreadsDim[1], dev.maxThreadsDim[2]);
+	printLine();
 	printf("Max Dimension Sizes for Grid:\t\t\tx: %d, y: %d, z: %d\n", dev.maxGridSize[0], dev.maxGridSize[1], dev.maxGridSize[2]);
 }
 
@@ -88,4 +99,9 @@ int devGetCores(cudaDeviceProp dev)
 		default:
 			return -1;
 	}
+}
+
+void printLine()
+{
+	printf("------------------------------------------------------------------------------\n");
 }
