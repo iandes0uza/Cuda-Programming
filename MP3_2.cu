@@ -13,7 +13,7 @@
 #include <stdlib.h>
 #include <ctime>
 
-void gpuMultiplication(float* inputA, float* inputB, float* result, int num);
+__global__ void gpuMultiplication(float* inputA, float* inputB, float* result, int num);
 void cpuMultiplication(float* inputA, float* inputB, float* result, int num);
 
 int main() 
@@ -102,5 +102,38 @@ int main()
 		cudaFree(devB);
 		free(matrixA);
 		free(matrixB);
+	}
+}
+
+__global__ void gpuMultiplication(float *a, float *b, float *result, int num)
+{
+	int col = blockIdx.x * blockDim.x + threadIdx.x;
+	int row = blockIdx.y * blockDim.y + threadIdx.y;
+	float ans = 0.0;
+	
+	if (row < num && col < num)
+	{
+		for (int i = 0; i < num; i++)
+		{
+			ans += a[row * num + i] * b[i * num + col];
+			result[row * num + col] = ans;
+		}
+	}
+}
+
+void cpuMultiplication(float *a, float *b, float *result, int num)
+{
+	float ans = 0.0;
+	for (int x = 0; x < num; x++)
+	{
+		for (int y = 0; y < num; y++)
+		{
+			ans = 0.0;
+			for (int i = 0; i < num; i++)
+			{
+				ans += a[x * num + i] * b[i * num + y];
+			}
+			result[x * num + y] = ans;
+		}
 	}
 }
