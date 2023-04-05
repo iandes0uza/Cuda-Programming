@@ -21,6 +21,10 @@ int main()
 	int testSize [arraySize] = {125, 250, 500, 1000, 2000};
 	for (int i = 0; i < arraySize; i++)
 	{
+		printf("*****************************************************************************\n");
+		printf("------------------------------ %d X %d Matrix ------------------------------\n", testSize[i], testSize[i]);
+		printf("*****************************************************************************\n");
+
 		//Create Event Objects
 		cudaEvent_t start, stop;
 		cudaEventCreate(&start);
@@ -48,24 +52,26 @@ int main()
 			}
 		}
 
-		printf("Moving %d x %d Matrix To Device", testSize[i], testSize[i]);
+		//Print Time (Host -> Device)
 		cudaEventRecord(start);
 		cudaMemcpy(devA, matrixA, size, cudaMemcpyHostToDevice);
 		cudaMemcpy(devB, matrixB, size, cudaMemcpyHostToDevice);
 		cudaEventRecord(stop);
 		cudaEventSynchronize(stop);
 		cudaEventElapsedTime(&time, start, stop);
-		printf("\tMatrices transfer time: %0.2f \n", time);
+		printf("Elapsed Host -> Device:\t\t\t%0.2f \n", time);
+		printf("------------------------------------------------------------------------------\n");
 
-		printf("Moving %d x %d Matrix To Host", testSize[i], testSize[i]);
+		//Print Time (Device -> Host)
 		cudaEventRecord(start);
-		cudaMemcpy(devA, matrixA, size, cudaMemcpyDeviceToHost);
-		cudaMemcpy(devB, matrixB, size, cudaMemcpyDeviceToHost);
+		cudaMemcpy(matrixA, devA, size, cudaMemcpyDeviceToHost);
+		cudaMemcpy(matrixB, devB, size, cudaMemcpyDeviceToHost);
 		cudaEventRecord(stop);
 		cudaEventSynchronize(stop);
 		cudaEventElapsedTime(&time, start, stop);
-		printf("\tMatrices transfer time: %0.2f \n", time);
+		printf("Elapsed Device -> Host:\t\t\t%0.2f \n", time);
 
+		//Free Memory
 		cudaEventDestroy(start);
 		cudaEventDestroy(stop);
 		cudaFree(devA);
@@ -73,78 +79,4 @@ int main()
 		free(matrixA);
 		free(matrixB);
 	}
-	/*
-	cudaEvent_t startTransfer, stopTransfer, startGPU, stopGPU;
-	cudaEventCreate(&startTransfer);
-	cudaEventCreate(&stopTransfer);
-	cudaEventCreate(&startGPU);
-	cudaEventCreate(&stopGPU);
-
-	float transTime = 0.0f;
-	float gpuTime = 0.0f;
-
-	//synchronize
-	cudaDeviceSynchronize(start);
-
-
-	//get the size of the matrix
-	size_t size = S*S*sizeof(int);
-
-	//Allocate Pointer Memory
-	int* a = (int*)malloc(size);
-	int* b = (int*)malloc(size);
-	int* cpuResult = (int*)malloc(size);
-	int* gpuResult = (int*)malloc(size);
-
-	//Initialize Multiplication Matrices
-	for (int i = 0; i < S; i++)
-	{
-	for (int j = 0; j < S; j++)
-	{
-	int rand1 = rand() % 10;
-	int rand2 = rand() % 10;
-	*(a + i * S + j) = rand1;
-	*(b + i * S + j) = rand2;
-	}
-	}
-
-	//Allocate Device Memory
-	int* devA, devB, devResult;
-	cudaMalloc((void**)&devA, size);
-	cudaMalloc((void**)&devB, size);
-	cudaMalloc((void**)&devResult, size);
-
-	//Transfer Time Recording
-	cudaEventRecord(startTransfer);
-	cudaMemcpy(devA, a, size, cudaMemcpyHostToDevice);
-	cudaMemcpy(devB, b, size, cudaMemcpyHostToDevice);
-	cudaEventRecord(stopTransfer);
-	cudaEventSynchronize(stopTransfer);
-	cudaEventElapsedTime(&transTime, startTransfer, stopTransfer);
-	printf("Matrices transfer time: %0.2f \n", transTime);
-
-	dim3 threadsPerBlock(16, 16);
-	dim3 numberOfBlocks(ceil(S / threadsPerBlock.x), ceil(S / threadsPerBlock.y), 1);
-
-
-	cudaEventRecord(startGPU);
-	DeviceMatrixMultiplication << <numberOfBlocks, threadsPerBlock >> >(devA, devB, devResult, S);
-	cudaEventRecord(stopGPU);
-	cudaEventSynchronize(stopGPU);
-	cudaEventElapsedTime(&gpuTime, startGPU, stopGPU);
-
-	printf("for 16x16: \n");
-	printf("number of blocks in x and y, respectively: %d, %d\n", (int)S / (int)16, (int)S / (int)16);
-	printf("time taken : %0.2f ", gpuTime);
-	cudaMemcpy(gpuResult, devResult, size, cudaMemcpyDeviceToHost);
-
-	HostMatrixMultiplication(a, b, cpuResult, S);
-
-
-	for (int x = 0; x < S; x++) {
-	for (int y = 0; y < S; y++) {
-	if (*(cpuResult + x * S + y) != *(gpuResult + x * S + y))
-	flag = 1;
-	}
-	}*/
 }
