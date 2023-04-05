@@ -13,8 +13,6 @@
 #include <stdlib.h>
 #include <ctime>
 
-
-
 int main() 
 {
 	const int arraySize = 5;
@@ -22,7 +20,7 @@ int main()
 	for (int i = 0; i < arraySize; i++)
 	{
 		printf("*****************************************************************************\n");
-		printf("------------------------------ %d X %d Matrix ------------------------------\n", testSize[i], testSize[i]);
+		printf("----------------------------- %d X %d Matrix -----------------------------\n", testSize[i], testSize[i]);
 		printf("*****************************************************************************\n");
 
 		//Create Event Objects
