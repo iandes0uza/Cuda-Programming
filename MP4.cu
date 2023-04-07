@@ -9,23 +9,24 @@
 #include "device_launch_parameters.h"
 #include <stdio.h>
 #include <iostream>
-#include <math.h>
 #include <stdlib.h>
 #include <ctime>
 
-__global__ void gpuMultiplication(float* inputA, float* inputB, float* result, int num);
-void cpuMultiplication(float* inputA, float* inputB, float* result, int num);
+#define BLOCK_WIDTH 16
+
+__global__ void gpuTiledMultiplication(int *a, int *b, int *c, int size);
+void cpuTiledMultiplication(int *A, int *B, int *C, int size);
 
 int main()
 {
-	const int blockNum = 5;
+	const int tileNum = 5;
 	const int arraySize = 5;
-	int blockWidth[blockNum] = { 2, 4, 10, 20, 25 };
+	int tileWidth[tileNum] = { 2, 4, 10, 20, 25 };
 	int testSize[arraySize] = { 125, 250, 500, 1000, 2000 };
-	for (int i = 0; i < blockNum; i++)
+	for (int i = 0; i < tileNum; i++)
 	{
 		printf("*****************************************************************************\n");
-		printf("---------------------------- %d X %d Block Width ----------------------------\n", blockWidth[i], blockWidth[i]);
+		printf("--------------------------- %d X %d Tile Width ---------------------------\n", blockWidth[i], blockWidth[i]);
 		printf("*****************************************************************************\n");
 		for (int j = 0; j < arraySize; j++)
 		{
@@ -67,10 +68,10 @@ int main()
 			}
 
 			//Defining Block & Grid Size
-			int NumBlocks = testSize[j] / blockWidth[i];
-			if (testSize[j] % blockWidth[i]) NumBlocks++;
+			int NumBlocks = testSize[j] / tileWidth[i];
+			if (testSize[j] % tileWidth[i]) NumBlocks++;
 			dim3 dimGrid(NumBlocks, NumBlocks);
-			dim3 dimBlock(blockWidth[i], blockWidth[i]);
+			dim3 dimBlock(tileWidth[i], tileWidth[i]);
 
 			//Copy Memory (Host -> Device)
 			cudaMemcpy(devA, matrixA, size, cudaMemcpyHostToDevice);
@@ -78,7 +79,7 @@ int main()
 
 			//Print GPU Completion Time
 			cudaEventRecord(start);
-			gpuMultiplication << < dimGrid, dimBlock >> > (devA, devB, devResult, testSize[j]);
+			tiledMultiplication << < dimGrid, dimBlock >> > (devA, devB, devResult, testSize[j], tileWidth[i]);
 			cudaEventRecord(stop);
 			cudaEventSynchronize(stop);
 			cudaEventElapsedTime(&time, start, stop);
@@ -90,7 +91,7 @@ int main()
 
 			//Print CPU Completion Time
 			cudaEventRecord(start);
-			cpuMultiplication(matrixA, matrixB, cpuResult, testSize[j]);
+			cpuTiledMultiplication(matrixA, matrixB, cpuResult, testSize[j]);
 			cudaEventRecord(stop);
 			cudaEventSynchronize(stop);
 			cudaEventElapsedTime(&time, start, stop);
@@ -110,33 +111,66 @@ int main()
 	}
 }
 
-__global__ void gpuMultiplication(float *a, float *b, float *result, int num)
+//GPU Multiplication
+__global__ void gpuTiledMultiplication(int *a, int *b, int *result, int num, int tileWidth) 
 {
-	int col = blockIdx.x * blockDim.x + threadIdx.x;
-	int row = blockIdx.y * blockDim.y + threadIdx.y;
-	float ans = 0.0;
+	__shared__ int tile1[tileWidth][tileWidth];
+	__shared__ int tile2[tileWidth][tileWidth];
 
-	if (row < num && col < num)
+	int row = blockIdx.y * tileWidth + threadIdx.y;
+	int col = blockIdx.x * tileWidth + threadIdx.x;
+	
+	int tX = threadIdx.x;
+	int tY = threadIdx.y;
+
+	int tempA = 0;
+	int tempB = 0;
+	int location = 0;
+
+	for (int x = 0; x < gridDim.x; x++) 
 	{
-		for (int i = 0; i < num; i++)
+		location = (x * tileWidth + tY)* num + col;
+		
+		if (location >= num * num)
+			tile2[tY][tX] = 0;
+		else
+			tile2[tY][tX] = b[location];
+			
+		location = row * num + x * tileWidth + tX;
+		
+		if (location >= num * num)
+			tile1[tY][tX] = 0;
+		else
+			tile1[tY][tX] = a[location];
+
+		for (int y = 0; y < tileWidth; y++)
 		{
-			ans = ans + a[row * num + i] * b[i * num + col];
-			result[row * num + col] = ans;
+			tempA = tempA + tile1[tY][y] * tile2[y][tX];
 		}
+
+		__syncthreads();
 	}
+
+	if (row < num && col < num) 
+	{
+		tempB = row * num + col;
+		result[tempB] = tempA;
+	}
+
 }
 
-void cpuMultiplication(float *a, float *b, float *result, int num)
+//CPU Multiplication (can't figure out how to do it tiled???)
+void cpuTiledMultiplication(int *a, int *b, int *result, int num) 
 {
 	float ans = 0.0;
 	for (int x = 0; x < num; x++)
 	{
 		for (int y = 0; y < num; y++)
 		{
-			ans = 0.0;
-			for (int i = 0; i < num; i++)
-			{
-				ans += a[x * num + i] * b[i * num + y];
+			for (int i = 0; i < num; i++) {
+				offset1 = x * num + i;
+				offset2 = i * num + y;
+				ans = ans + a[x * num + i] * b[i * num + y];
 			}
 			result[x * num + y] = ans;
 		}

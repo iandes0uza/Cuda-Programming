@@ -7,209 +7,219 @@
 
 #include "cuda_runtime.h"
 #include <stdio.h> 
-#include <string.h> 
+#include <stdlib.h>
+#include <string.h>
+#include <math.h>
 
 //This library will help us fetch necessary information
 #include "device_launch_parameters.h"
 
 //Creating Global Variables
-//#define int TOLERANCE = 0.001; ???
-#define int TEST_SIZE = 5;
-#define experiment[TEST_SIZE] = [125, 250, 500, 1000, 2000];
-
+#define BLOCK_DIM 16
+#define TOLERANCE 0.0001
 
 //Creating Function Instance
-void hostRunner(float* a, float* b, float* c, int num, void (*matrixFunc)(float*, float*, float*, int), size_t size)
-void matrixCreate(float* a, float* b, float* c);
-void matrixElement(float* c, float* a, float* b, int num);
-void elementRunner(float* c, float* a, float* b, int num);
-void matrixRow(float* c, float* a, float* b, int num);
-void rowRunner(float* c, float* a, float* b, int num);
-void matrixColumn(float* c, float* a, float* b, int num);
-void columnRunner(float* c, float* a, float* b, int num);
-void matrixCPU(float* c, float* a, float* b, int num);
+__global__ void matrixElement(float *a, float *b, float *result, int num);
+__global__ void matrixRow(float *a, float *b, float *result, int num);
+__global__ void matrixColumn(float *a, float *b, float *result, int num);
+void matrixCPU(float *a, float *b, float *result, int num);
+float absol(float a);
+void checkTest(float *cpu, float *gpu, int size);
 
-void main()
+int main()
 {
-	float *a[], *b[], *c[];
-	
-	//Perform Test on all Matrix Sizes
-	for (int i = 0; i < TEST_SIZE; i++)
+	const int arraySize = 5;
+	int testSize[arraySize] = { 125, 250, 500, 1000, 2000 };
+	for (int i = 0; i < arraySize; i++)
 	{
-		int num = experiment[i];
-		size_t arraySize = num * num * sizeof(float);
-		a = (float*)malloc(arraySize);
-		b = (float*)malloc(arraySize);
-		c = (float*)malloc(arraySize);
-		hostRunner(a, b, c, num, matrixElement, arraySize);
-		hostRunner(a, b, c, num, matrixRow, arraySize);
-		hostRunner(a, b, c, num, matrixColumn, arraySize);
+		printf("*****************************************************************************\n");
+		printf("----------------------------- %d X %d Matrix -----------------------------\n", testSize[i], testSize[i]);
+		printf("*****************************************************************************\n");
+
+		//Create Event Objects
+		cudaEvent_t start, stop;
+		cudaEventCreate(&start);
+		cudaEventCreate(&stop);
+		float time = 0.0;
+
+		//Allocate Pointer Memory
+		size_t size = testSize[i] * testSize[i] * sizeof(float);
+		float* matrixA = (float*)malloc(size);
+		float* matrixB = (float*)malloc(size);
+		float* cpuResult = (float*)malloc(size);
+		float* gpuElement = (float*)malloc(size);
+		float* gpuRow = (float*)malloc(size);
+		float* gpuCol = (float*)malloc(size);
+
+		//Allocate Device Memory
+		float* devA;
+		float* devB;
+		float* devResult;
+		cudaMalloc((void**)&devA, size);
+		cudaMalloc((void**)&devB, size);
+		cudaMalloc((void**)&devResult, size);
+
+		//Fill Matrix
+		for (int x = 0; x < testSize[i]; x++)
+		{
+			for (int y = 0; y < testSize[i]; y++)
+			{
+				*(matrixA + x * testSize[i] + y) = (rand() % 100) / 10.0;
+				*(matrixB + x * testSize[i] + y) = (rand() % 100) / 10.0;
+				*(cpuResult + x * testSize[i] + y) = 0.0;
+				*(gpuElement + x * testSize[i] + y) = 0.0;
+				*(gpuRow + x * testSize[i] + y) = 0.0;
+				*(gpuCol + x * testSize[i] + y) = 0.0;
+			}
+		}
+
+		//Defining Block & Grid Size
+		int NumBlocks = testSize[i] / BLOCK_DIM;
+		if (testSize[i] % BLOCK_DIM) NumBlocks++;
+		dim3 dimGrid(NumBlocks, NumBlocks);
+		dim3 dimBlock(BLOCK_DIM, BLOCK_DIM);
+
+		//Elapsed CPU Addition
+		cudaEventRecord(start);
+		matrixCPU(matrixA, matrixB, cpuResult, testSize[i]);
+		cudaEventRecord(stop);
+		cudaEventSynchronize(stop);
+		cudaEventElapsedTime(&time, start, stop);
+		printf("Elapsed CPU:\t\t\t\t\t%0.2f \n", time);
+		printf("------------------------------------------------------------------------------\n");
+
+		//Copy Memory (Host -> Device)
+		cudaMemcpy(devA, matrixA, size, cudaMemcpyHostToDevice);
+		cudaMemcpy(devB, matrixB, size, cudaMemcpyHostToDevice);
+
+		//Elapsed GPU Addition by Element
+		cudaEventRecord(start);
+		matrixElement << < dimGrid, dimBlock >> > (devA, devB, devResult, testSize[i]);
+		cudaEventRecord(stop);
+		cudaEventSynchronize(stop);
+		cudaEventElapsedTime(&time, start, stop);
+		printf("Elapsed GPU-Element:\t\t\t\t%0.2f \n", time);
+
+		//Copy Memory (Device -> Host)
+		cudaMemcpy(gpuElement, devResult, size, cudaMemcpyDeviceToHost);
+
+		//Check if Test Passed
+		checkTest(cpuResult, gpuElement, testSize[i]);
+		printf("------------------------------------------------------------------------------\n");
+
+		//Elapsed GPU Addition by Row
+		cudaEventRecord(start);
+		matrixRow << < ceil(testSize[i] / BLOCK_DIM), BLOCK_DIM >> > (devA, devB, devResult, testSize[i]);
+		cudaEventRecord(stop);
+		cudaEventSynchronize(stop);
+		cudaEventElapsedTime(&time, start, stop);
+		printf("Elapsed GPU-Row:\t\t\t\t%0.2f \n", time);
+
+		//Copy Memory (Device -> Host)
+		cudaMemcpy(gpuRow, devResult, size, cudaMemcpyDeviceToHost);
+
+		//Check if Test Passed
+		checkTest(cpuResult, gpuRow, testSize[i]);
+		printf("------------------------------------------------------------------------------\n");
+
+		//Elapsed GPU Addition by Column
+		cudaEventRecord(start);
+		matrixColumn << < ceil(testSize[i] / BLOCK_DIM), BLOCK_DIM >> > (devA, devB, devResult, testSize[i]);
+		cudaEventRecord(stop);
+		cudaEventSynchronize(stop);
+		cudaEventElapsedTime(&time, start, stop);
+		printf("Elapsed GPU-Column:\t\t\t\t%0.2f \n", time);
+
+		//Copy Memory (Device -> Host)
+		cudaMemcpy(gpuCol, devResult, size, cudaMemcpyDeviceToHost);
+
+		//Check if Test Passed
+		checkTest(cpuResult, gpuCol, testSize[i]);
+
+		//Free Memory
+		cudaEventDestroy(start);
+		cudaEventDestroy(stop);
+		cudaFree(devA);
+		cudaFree(devB);
+		free(matrixA);
+		free(matrixB);
 	}
 }
 
-//CPU Multiplication
-void matrixCPU(float* c, float* a, float* b, int num)
-{
-	//Perform CPU operations
-	for (int i = 0; i < (num*num); i++)
-	{
-		c[i] = a[i] + b[i];
-	}
-}
 
-//GPU Multiplication by Element
-__global__ void matrixElement(float* c, float* a, float* b, int num)
-{
-	//Initiate the columns and rows
-	int col = blockIdx.x * blockDim.x + threadIdx.x;
-	int row = blockIdx.y * blockDim.y + threadIdx.y;
-	
-	//Find the # of iterations necessary
-	int i = row * N + col;
-	if (col < N && row < N )
-	{
-		c[i] = a[i] + b[i];
-	}
-}
-
-//GPU Element Multiplication Allocator
-void elementRunner(float* c, float* a, float* b, int num)
-{
-	dim3 threadsPerBlock(16, 16);
-	dim3 numBlocks((int)ceil(N / (float)threadsPerBlock.x), (int)ceil(N / (float)threadsPerBlock.y));
-	matrixRow<<<numBlocks, threadsPerBlock>>>(matrixA, matrixB, matrixC, num);
-}
-
-//GPU Multiplication by Row
-__global__ void matrixRow(float* c, float* a, float* b, int num)
-{
-	//Initiate rows
-	int row = blockIdx.y * blockDim.y + threadIdx.y;
-	
-	//Find the # of iterations necessary
-	if (row < num) return;
-	for (int i = 0; i < num; i++)
-	{
-		int j = row * num + 1;
-		c[j] = a[j] + b[j];
-	}
-}
-
-//GPU Row Multiplication Allocator
-void rowRunner(float* c, float* a, float* b, int num)
-{
-	dim3 threadsPerBlock(16, 16);
-	dim3 numBlocks((int)ceil(num / (float)threadsPerBlock.x), 1);
-	matrixRow<<<numBlocks, threadsPerBlock>>>(matrixA, matrixB, matrixC, num);
-}
-
-//GPU Multiplication by Column
-__global__ void matrixColumn(float* c, float* a, float* b, int num)
-{
-	//Initiate columns
-	int col = blockIdx.x * blockDim.x + threadIdx.x;
-	
-	//Find the # of iterations necessary
-	if (col < num) return;
-	for (int i = 0; i < num; i++)
-	{
-		int j = i * num + col;
-		c[j] = a[j] + b[j];
-	}
-}
-
-//GPU Column Multiplication Allocator
-void columnRunner(float* c, float* a, float* b, int num)
-{
-	dim3 threadsPerBlock(16, 16);
-	dim3 numBlocks((int)ceil(num / (float)threadsPerBlock.y));
-	matrixColumn<<<numBlocks, threadsPerBlock>>>(matrixA, matrixB, matrixC, num);
-}
-
-//Create Random Float Filled Vectors
-void matrixCreate(float* a, float* b, float* c, int num)
+//CPU (Host) Addition
+void matrixCPU(float *a, float *b, float *result, int num)
 {
 	for (int x = 0; x < num; x++)
 	{
-		for (int y = 0;  y < num; y++)
+		for (int y = 0; y < num; y++)
 		{
-			int z = x + y * num;
-			(*a)[z] = rand() % 100 / 10.0
-			(*b)[z] = rand() % 100 / 10.0
-			(*c)[z] = 0.0f;
+			result[x * num + y] = a[x * num + y] + b[x * num + y];
+		}
+	}
+
+}
+
+//GPU Addition by Element
+__global__ void matrixElement(float *a, float *b, float *result, int num)
+{
+	int col = blockIdx.x * blockDim.x + threadIdx.x;
+	int row = blockIdx.y * blockDim.y + threadIdx.y;
+
+	if (col < num && row < num)
+	{
+		result[row * num + col] = a[row * num + col] + b[row * num + col];
+	}
+}
+
+//GPU Addition by Row
+__global__ void matrixRow(float *a, float *b, float *result, int num)
+{
+	int row = blockIdx.y * blockDim.y + threadIdx.y;
+
+	if (row < num)
+	{
+		for (int i = 0; i < num; i++)
+		{
+			result[row * num + i] = a[row * num + i] + b[row * num + i];
 		}
 	}
 }
-			
 
-void hostRunner(float* a, float* b, float* c, int num, void (*matrixFunc)(float*, float*, float*, int), size_t size)
+//GPU Addition by Column
+__global__ void matrixColumn(float *a, float *b, float *result, int num)
 {
-	//Initialize Matricies & Pointers
-	matrixCreate(a, b, c));
-	float *matrixA, *matrixB, *matrixC;
+	int col = blockIdx.x * blockDim.x + threadIdx.x;
 
-	//Allocate Device Memory
-	cudaMalloc((void**)&matrixA, size);
-	cudaMalloc((void**)&matrixB, size);
-	cudaMalloc((void**)&matrixC, size);
-
-	//Copy Host Memory to Device Memory
-	cudaMemcpy(matrixA, A, size, cudaMemcpyHostToDevice);
-	cudaMemcpy(matrixB, B, size, cudaMemcpyHostToDevice);
-	cudaMemcpy(matrixC, C, size, cudaMemcpyHostToDevice);
-
-	//KERNEL CALL
-	float time = 0;
-	cudaEvent_t start, end;
-	cudaEventCreate(&start);
-	cudaEventCreate(&end);
-	cudaEventRecord(start);
-	addHandler(pA, pB, pC, N);
-	cudaEventRecord(end);
-	cudaEventSynchronize(end);
-	cudaEventElapsedTime(&time, start, end);
-	cudaEventDestroy(start);
-	cudaEventDestroy(end);
-	printf("Kernal function time: %f\n", time);
-
-	//Copy result from device memory to host memory
-	cudaMemcpy(C, pC, (N*N)*sizeof(float), cudaMemcpyDeviceToHost);
-
-	//Use the CPU to compute addition
-	time = 0;
-	cudaEventCreate(&start);
-	cudaEventCreate(&end);
-	cudaEventRecord(start);
-	matrixCPU(matrixA, matrixB, matrixC, num);
-	cudaEventRecord(end);
-	cudaEventSynchronize(end);
-	cudaEventElapsedTime(&time, start, end);
-	cudaEventDestroy(start);
-	cudaEventDestroy(end);
-	printf("CPU time: %f\n", time);
-
-
-	//Check GPU computed against CPU computed
-	int good = 1;
-	int i, j;
-	for (i = 0; i < N; i++) {
-		for (j = 0; j < N; j++) {
-			int index = i + j * N;
-			float diff = (*CTemp)[index] - (*C)[index]; //Compute difference
-			if (absf(diff) > TOLERANCE) {
-				good = 0;
-			}
+	if (col < num)
+	{
+		for (int i = 0; i < num; i++)
+		{
+			result[i * num + col] = a[i * num + col] + b[i * num + col];
 		}
 	}
+}
 
-	if (good == 1) {
-		printf("TEST PASSED\n");
-	} else {
-		printf("TEST FAILED\n");
+//Overloading Absolute Function
+float absol(float a)
+{
+	if (a < 0) return -a;
+	else return a;
+}
+
+//Tolerance Checking
+void checkTest(float *cpu, float *gpu, int size)
+{
+	for (int x = 0; x < size * size; x++)
+	{
+
+		if (absol(cpu[x] - gpu[x]) > TOLERANCE)
+		{
+			printf("\t\t\t\t\t**TEST FAILED**\n");
+			return;
+		}
+
 	}
-
-	// free device memory
-	cudaFree(pA);
-	cudaFree(pB);
-	cudaFree(pC);
+	printf("\t\t\t\t\t--TEST PASSED--\n");
+	return;
 }

@@ -16,14 +16,14 @@
 __global__ void gpuMultiplication(float* inputA, float* inputB, float* result, int num);
 void cpuMultiplication(float* inputA, float* inputB, float* result, int num);
 
-int main() 
+int main()
 {
 	const int arraySize = 5;
-	int testSize [arraySize] = {125, 250, 500, 1000, 2000};
+	int testSize[arraySize] = { 125, 250, 500, 1000, 2000 };
 	for (int i = 0; i < arraySize; i++)
 	{
 		printf("*****************************************************************************\n");
-		printf("------------------------------- %d X %d Matrix -------------------------------\n", testSize[i], testSize[i]);
+		printf("----------------------------- %d X %d Matrix -----------------------------\n", testSize[i], testSize[i]);
 		printf("*****************************************************************************\n");
 
 		//Create Event Objects
@@ -40,9 +40,9 @@ int main()
 		float* gpuResult = (float*)malloc(size);
 
 		//Allocate Device Memory
-		int* devA;
-		int* devB;
-		int* devResult;
+		float* devA;
+		float* devB;
+		float* devResult;
 		cudaMalloc((void**)&devA, size);
 		cudaMalloc((void**)&devB, size);
 		cudaMalloc((void**)&devResult, size);
@@ -58,7 +58,7 @@ int main()
 				*(gpuResult + x * testSize[i] + y) = 0.0;
 			}
 		}
-		
+
 		//Print Time (Host -> Device) - USED FOR ANALYSIS
 		cudaEventRecord(start);
 		cudaMemcpy(devA, matrixA, size, cudaMemcpyHostToDevice);
@@ -66,16 +66,16 @@ int main()
 		cudaEventRecord(stop);
 		cudaEventSynchronize(stop);
 		cudaEventElapsedTime(&time, start, stop);
-		printf("Elapsed Host -> Device:\t\t\t%0.2f \n", time);
+		printf("Elapsed Host -> Device:\t\t\t\t\t%0.2f \n", time);
 		printf("------------------------------------------------------------------------------\n");
 
 		//Print GPU Completion Time
 		cudaEventRecord(start);
-		//gpuMultiplication <<< 1, 1 >>> (devA, devB, devResult, testSize[i]);
+		gpuMultiplication <<< 1, 1 >>> (devA, devB, devResult, testSize[i]);
 		cudaEventRecord(stop);
 		cudaEventSynchronize(stop);
 		cudaEventElapsedTime(&time, start, stop);
-		printf("Elapsed GPU Computation:\t\t\t%0.2f \n", time);
+		printf("Elapsed GPU Computation:\t\t\t\t%0.2f \n", time);
 		printf("------------------------------------------------------------------------------\n");
 
 		//Print Time (Device -> Host) - USED FOR ANALYSIS
@@ -84,16 +84,16 @@ int main()
 		cudaEventRecord(stop);
 		cudaEventSynchronize(stop);
 		cudaEventElapsedTime(&time, start, stop);
-		printf("Elapsed Device -> Host:\t\t\t%0.2f \n", time);
+		printf("Elapsed Device -> Host:\t\t\t\t\t%0.2f \n", time);
 		printf("------------------------------------------------------------------------------\n");
-		
-		//Print Time (Host -> Device)
+
+		//Print CPU Completion Time
 		cudaEventRecord(start);
-		//cpuMultiplication();
+		cpuMultiplication(matrixA, matrixB, cpuResult, testSize[i]);
 		cudaEventRecord(stop);
 		cudaEventSynchronize(stop);
 		cudaEventElapsedTime(&time, start, stop);
-		printf("Elapsed CPU Computation -> Device:\t\t\t%0.2f \n", time);
+		printf("Elapsed CPU Computation:\t\t\t\t%0.2f \n", time);
 
 		//Free Memory
 		cudaEventDestroy(start);
@@ -110,12 +110,12 @@ __global__ void gpuMultiplication(float *a, float *b, float *result, int num)
 	int col = blockIdx.x * blockDim.x + threadIdx.x;
 	int row = blockIdx.y * blockDim.y + threadIdx.y;
 	float ans = 0.0;
-	
+
 	if (row < num && col < num)
 	{
 		for (int i = 0; i < num; i++)
 		{
-			ans += a[row * num + i] * b[i * num + col];
+			ans = ans + a[row * num + i] * b[i * num + col];
 			result[row * num + col] = ans;
 		}
 	}
